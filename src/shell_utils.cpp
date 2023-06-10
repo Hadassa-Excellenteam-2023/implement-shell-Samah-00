@@ -1,66 +1,18 @@
-/*
- * Build A Shell 
- * Linux Exellenteam
- * Samah Rajahi 211558556
- * To run in linux:
- * g++ -Wall -o main main.cpp shell_utils.cpp
- */
-
-
-// ----- standard library headers -----
-#include <iostream>
-#include <string>
+#include "shell_utils.h"
 #include <sstream>
-#include <vector>
-#include <unistd.h>
+#include <iostream>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <cstdlib>
-#include <cstring>
+#include <unistd.h>
 
-// ----- functions signatures -----
-std::vector<std::string> split(const std::string& input, char delimiter);
-void executeChildProcess(const std::string& commandPath, const std::vector<std::string>& arguments);
-void executeCommand(const std::string& commandPath, const std::vector<std::string>& arguments, bool runInBackground);
-void printCommandDetails(const Job& job);
-void executeMyJobsCommand();
-void executeCdCommand(const std::vector<std::string>& tokens);
-std::string searchPathForCommand(const std::string& commandPath, const char* pathEnv);
-void handleCommand(const std::string& command);
-
-// ----------
-struct Job {
-    std::string command;
-    int pid;
-    bool isRunning;
-
-    Job(const std::string& cmd, int processId, bool running)
-        : command(cmd), pid(processId), isRunning(running)
-    {
-    }
-};
-
-std::vector<Job> backgroundJobs; // Vector to store background jobs
-// ----------
-
-#include <iostream>
-#include <string>
-#include "shell_utils.h"
-
-// ----- Main function -----
-
-int main() {
-    std::string input;
-    while (true) {
-        std::cout << "shell> ";
-        std::getline(std::cin, input);
-        handleCommand(input);
-    }
-    return 0;
+// ---- c-tor for struct Job -----
+Job::Job(const std::string& cmd, int processId, bool running)
+    : command(cmd), pid(processId), isRunning(running) {
 }
 
+std::vector<Job> backgroundJobs; // Vector to store background jobs
 
-
+// ----- Function definitions -----
 // Splits a string into a vector of tokens based on a delimiter
 std::vector<std::string> split(const std::string& input, char delimiter) {
     std::vector<std::string> tokens;
@@ -106,11 +58,24 @@ void executeCommand(const std::string& commandPath, const std::vector<std::strin
         if (!runInBackground) {
             int status;
             waitpid(pid, &status, 0); // Wait for the child process to complete
+            // Update the job status based on the process exit status
+            bool isRunning = !WIFEXITED(status) || (WEXITSTATUS(status) == 0);
+            updateJobStatus(pid, isRunning);
         }
         else {
             // Add the child process details (pid, command, etc.) to a list of background jobs
             Job job(commandPath, pid, true);
             backgroundJobs.push_back(job);
+        }
+    }
+}
+
+// Update the job status based on the process ID
+void updateJobStatus(int pid, bool isRunning) {
+    for (Job& job : backgroundJobs) {
+        if (job.pid == pid) {
+            job.isRunning = isRunning;
+            break;
         }
     }
 }
@@ -202,4 +167,3 @@ void handleCommand(const std::string& command) {
 
     }
 }
-
