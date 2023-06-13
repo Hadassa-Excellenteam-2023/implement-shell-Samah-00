@@ -11,7 +11,7 @@
 #include <string>
 #include "shell_utils.h"
 
-// ----- Main function -----
+ // ----- Main function -----
 
 int main() {
     std::string input;
