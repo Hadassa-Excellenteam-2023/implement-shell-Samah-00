@@ -4,13 +4,14 @@
  * Samah Rajahi 211558556
  * To run in linux:
  * g++ -Wall -o main main.cpp shell_utils.cpp
+ * ./main
  */
 
 #include <iostream>
 #include <string>
 #include "shell_utils.h"
 
-// ----- Main function -----
+ // ----- Main function -----
 
 int main() {
     std::string input;

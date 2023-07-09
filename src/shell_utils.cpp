@@ -4,6 +4,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <string>
+#include <fstream>
 
 // ---- c-tor for struct Job -----
 Job::Job(const std::string& cmd, int processId, bool running)
@@ -24,26 +27,69 @@ std::vector<std::string> split(const std::string& input, char delimiter) {
     return tokens;
 }
 
-// Executes a child process with the given command path and arguments
-void executeChildProcess(const std::string& commandPath, const std::vector<std::string>& arguments) {
+// Executes a child process with the given command path, arguments, input file, and output file
+void executeChildProcess(const std::string& commandPath, const std::vector<std::string>& arguments,
+    const std::string& inputFile, const std::string& outputFile) {
+    std::vector<char*> args = prepareArguments(commandPath, arguments);
+
+    if (!inputFile.empty()) {
+        redirectInput(inputFile);
+    }
+
+    if (!outputFile.empty()) {
+        redirectOutput(outputFile);
+    }
+
+    if (execvp(commandPath.c_str(), args.data()) == -1) {
+        std::cerr << "Failed to execute command." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
+// Prepare arguments for execvp
+std::vector<char*> prepareArguments(const std::string& commandPath, const std::vector<std::string>& arguments) {
     std::vector<char*> args;
     args.push_back(const_cast<char*>(commandPath.c_str())); // First argument is the command itself
 
-    // Prepare arguments for execvp
     for (const auto& arg : arguments) {
         args.push_back(const_cast<char*>(arg.c_str()));
     }
     args.push_back(nullptr); // Last argument must be nullptr
 
-    // Execute the command
-    if (execvp(commandPath.c_str(), args.data()) == -1) {
-        std::cerr << "Failed to execute command." << std::endl;
-        exit(EXIT_FAILURE);	// In case execvp fails
-    }
+    return args;
 }
 
-// Executes a command with the given command path, arguments, and background execution flag
-void executeCommand(const std::string& commandPath, const std::vector<std::string>& arguments, bool runInBackground) {
+// Redirect input from the given input file
+void redirectInput(const std::string& inputFile) {
+    int inputFd = open(inputFile.c_str(), O_RDONLY);
+    if (inputFd == -1) {
+        std::cerr << "Failed to open input file: " << inputFile << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (dup2(inputFd, STDIN_FILENO) == -1) {
+        std::cerr << "Failed to redirect input." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    close(inputFd);
+}
+
+// Redirect output to the given output file
+void redirectOutput(const std::string& outputFile) {
+    int outputFd = open(outputFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (outputFd == -1) {
+        std::cerr << "Failed to open output file: " << outputFile << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (dup2(outputFd, STDOUT_FILENO) == -1) {
+        std::cerr << "Failed to redirect output." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    close(outputFd);
+}
+
+// Executes a command with the given command path, arguments, input file, output file, and background execution flag
+void executeCommand(const std::string& commandPath, const std::vector<std::string>& arguments,
+    const std::string& inputFile, const std::string& outputFile, bool runInBackground) {
     pid_t pid = fork();
     if (pid < 0) {
         std::cerr << "Fork failed." << std::endl;
@@ -51,7 +97,7 @@ void executeCommand(const std::string& commandPath, const std::vector<std::strin
     }
     if (pid == 0) {
         // Child process
-        executeChildProcess(commandPath, arguments);
+        executeChildProcess(commandPath, arguments, inputFile, outputFile);
     }
     else {
         // Parent process
@@ -160,10 +206,24 @@ void handleCommand(const std::string& command) {
 
         // Pass the arguments vector to the executeCommand function
         std::vector<std::string> arguments;
-        if (tokens.size() > 1) {
-            arguments.assign(tokens.begin() + 1, tokens.end());
-        }
-        executeCommand(commandPath, arguments, runInBackground);
+        std::string inputFile;
+        std::string outputFile;
 
+        // Check for input and output redirection operators
+        for (size_t i = 1; i < tokens.size(); i++) {
+            if (tokens[i] == "<" && i + 1 < tokens.size()) {
+                inputFile = tokens[i + 1];
+                i++; // Skip the input file argument
+            }
+            else if (tokens[i] == ">" && i + 1 < tokens.size()) {
+                outputFile = tokens[i + 1];
+                i++; // Skip the output file argument
+            }
+            else {
+                arguments.push_back(tokens[i]);
+            }
+        }
+
+        executeCommand(commandPath, arguments, inputFile, outputFile, runInBackground);
     }
 }
